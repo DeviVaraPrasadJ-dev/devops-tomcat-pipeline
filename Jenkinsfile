@@ -4,16 +4,24 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-        KEY_NAME              = 'Jenkins-singapore'   // Your AWS key pair
-        PRIVATE_KEY_PATH      = '/var/lib/jenkins/.ssh/id_rsa'
+        KEY_NAME              = 'Jenkins-singapore'
         TF_DIR                = 'terraform-infra'
         ANSIBLE_DIR           = 'ansible-playbooks'
+        JAVA_APP_DIR          = 'javaapp-tomcat'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'git@github.com:DeviVaraPrasadJ-dev/devops-tomcat-pipeline.git'
+            }
+        }
+
+        stage('Build WAR with Maven') {
+            steps {
+                dir(JAVA_APP_DIR) {
+                    sh 'mvn clean package'
+                }
             }
         }
 
@@ -36,11 +44,10 @@ pipeline {
             }
         }
 
-        stage('Wait for EC2') {
+        stage('Wait for EC2 and Fetch IP') {
             steps {
                 dir(TF_DIR) {
                     script {
-                        // Capture public IP from Terraform output
                         env.EC2_IP = sh(
                             script: "terraform output -raw public_ip",
                             returnStdout: true
@@ -51,12 +58,14 @@ pipeline {
             }
         }
 
-        stage('Deploy Tomcat using Ansible') {
+        stage('Deploy Tomcat & WAR using Ansible') {
             steps {
-                dir(ANSIBLE_DIR) {
-                    sh """
-                        ansible-playbook -i ${EC2_IP}, -u ubuntu --private-key ${PRIVATE_KEY_PATH} deploy-tomcat.yml
-                    """
+                sshagent(['jenkins-singapore']) {  // <-- Use SSH Agent with your credential ID here
+                    dir(ANSIBLE_DIR) {
+                        sh """
+                            ansible-playbook -i ${EC2_IP}, -u ubuntu deploy-tomcat.yml
+                        """
+                    }
                 }
             }
         }
@@ -64,7 +73,7 @@ pipeline {
 
     post {
         always {
-            echo 'Pipeline finished.'
+            echo ' Pipeline execution complete.'
         }
     }
 }
