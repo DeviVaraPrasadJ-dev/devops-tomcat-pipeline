@@ -62,6 +62,18 @@
     group: root
     mode: '0644'
   notify: Restart Tomcat
+  
+- name: Ensure RemoteAddrValve allows all IPs in Manager and Host Manager
+  become: yes
+  blockinfile:
+    path: "{{ item }}"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
+    block: |
+      <Valve className="org.apache.catalina.valves.RemoteAddrValve" allow=".*" />
+  with_items:
+    - "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
+    - "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
+  notify: Restart Tomcat
 
 - name: Deploy WAR file (from control node)
   become: yes
