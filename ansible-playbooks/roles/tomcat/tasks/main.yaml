@@ -245,7 +245,7 @@
 # - "ignore_errors: yes" -> ensures play continues even if pkill errors out.
 # - IMPORTANT: You asked this task to be kept exactly as originally written, so
 #    the task body below is preserved verbatim — only explanatory comments were added above.
-- name: Fallback: kill any lingering Tomcat bootstrap java processes
+- name: Fallback - kill any lingering Tomcat bootstrap java processes
   become: yes
   shell: "pkill -f 'org.apache.catalina.startup.Bootstrap' || true"
   ignore_errors: yes
