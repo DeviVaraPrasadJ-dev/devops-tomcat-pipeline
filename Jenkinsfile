@@ -91,7 +91,7 @@ pipeline {
                                 echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}" > inventory.ini
                                 
                                 # Run ansible-playbook with the inventory file
-                                ansible-playbook -i inventory.ini deploy-tomcat.yml
+                                ansible-playbook -i inventory.ini deploy-tomcat.yaml
                             """
                         }
                     }
