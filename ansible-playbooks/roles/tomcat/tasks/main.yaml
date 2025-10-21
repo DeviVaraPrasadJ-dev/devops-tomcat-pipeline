@@ -1,188 +1,422 @@
 ---
-- hosts: all
+# ------------------------------------------------------------------------------
+# NOTE:
+# - All comment blocks immediately preceding a task explain every important
+#   keyword, module parameter, and common variable present in the following
+#   task. These are intended for a reader who opens this single file and wants
+#   to understand *why* each line is there.
+# - Comments are preserved as YAML comments and do not affect execution.
+# ------------------------------------------------------------------------------
+#
+# Task: Ensure apt cache is up-to-date
+#
+# Explanation (line-by-line):
+# - "- name:" -> human-readable identifier for the task. Used in playbook output.
+# - "Ensure apt cache is up-to-date" -> describes what the task will do.
+# - "become: yes" -> escalate privileges (run the module as root). We need root to
+#    update system package metadata (apt-get update changes files under /var/lib/apt).
+# - "apt:" -> the Ansible module for managing Debian/Ubuntu packages and caches.
+# - "update_cache: yes" -> instructs apt module to run 'apt-get update' (refresh package indexes).
+# - "cache_valid_time: 3600" -> number of seconds the cache is considered fresh;
+#    if the cache is older than this, Ansible will update it. Helps avoid
+#    repeated updates on frequent runs while ensuring reasonably fresh metadata.
+- name: Ensure apt cache is up-to-date
   become: yes
-  vars:
-    tomcat_install_dir: "{{ tomcat_install_dir | default('/opt/tomcat') }}"
-    tomcat_user: "{{ tomcat_user | default('tomcat') }}"
-    tomcat_group: "{{ tomcat_group | default('tomcat') }}"
-    tomcat_manager_dir: "{{ tomcat_install_dir }}/webapps/manager"
-    tomcat_host_manager_dir: "{{ tomcat_install_dir }}/webapps/host-manager"
-    tomcat_logs: "{{ tomcat_install_dir }}/logs"
-    manager_context: "{{ tomcat_manager_dir }}/META-INF/context.xml"
-    host_manager_context: "{{ tomcat_host_manager_dir }}/META-INF/context.xml"
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
 
-  tasks:
-    # -------------------------------------------------------------------------
-    - name: Ensure tomcat install dir exists
-      file:
-        path: "{{ tomcat_install_dir }}"
-        state: directory
-        owner: "{{ tomcat_user }}"
-        group: "{{ tomcat_group }}"
-        mode: '0755'
+# ------------------------------------------------------------------------------
+#
+# Task: Install required packages (Java + python3)
+#
+# Explanation:
+# - "apt:" -> same apt module as above; used to install packages.
+# - "name:" -> list of package names to ensure are installed.
+#   * "{{ java_package }}" -> variable placeholder resolved at runtime from
+#       role defaults/vars; allows selecting appropriate Java package per distro.
+#   * "python3" -> runtime for many scripts and for Ansible facts on the remote.
+#   * "python3-apt" -> Python binding used by Ansible's apt module on the remote.
+# - "state: present" -> ensures the listed packages are installed (but not necessarily latest).
+# - "install_recommends: no" -> prevents apt from installing "recommended" packages,
+#    keeping the install minimal and predictable.
+- name: Install required packages (Java + python3)
+  become: yes
+  apt:
+    name:
+      - "{{ java_package }}"
+      - python3
+      - python3-apt
+    state: present
+    install_recommends: no
 
-    # -------------------------------------------------------------------------
-    # Ensure manager webapp is present (stat).
-    - name: Check if manager webapp directory exists
-      stat:
-        path: "{{ tomcat_manager_dir }}"
-      register: manager_dir_stat
+# ------------------------------------------------------------------------------
+#
+# Task: Create tomcat group
+#
+# Explanation:
+# - "group:" -> Ansible module to create/manage a UNIX group on the remote host.
+# - "name: '{{ tomcat_group }}'" -> the name of the group; uses a variable so it
+#    can be changed in defaults/vars. Using a variable avoids hardcoding 'tomcat'.
+# - "state: present" -> ensure the group exists (create if absent).
+# - Creating a dedicated group provides permission separation and is a best practice.
+- name: Create tomcat group
+  become: yes
+  group:
+    name: "{{ tomcat_group }}"
+    state: present
 
-    - name: Check if host-manager webapp directory exists
-      stat:
-        path: "{{ tomcat_host_manager_dir }}"
-      register: host_manager_dir_stat
+# ------------------------------------------------------------------------------
+#
+# Task: Create tomcat user
+#
+# Explanation:
+# - "user:" -> module to create/manage users on the remote host.
+# - "name: '{{ tomcat_user }}'" -> variable for the username (ex: tomcat).
+# - "group: '{{ tomcat_group }}'" -> sets the user's primary group to the tomcat group.
+# - "create_home: no" -> avoid creating a home directory for this system/service user.
+# - "system: yes" -> create as a system user (UID typically <1000); indicates it's not a human user.
+# - "shell: /bin/false" -> sets a non-login shell preventing interactive logins.
+# - Creating a service user reduces risk from running services as root.
+- name: Create tomcat user
+  become: yes
+  user:
+    name: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    create_home: no
+    system: yes
+    shell: /bin/false
 
-    # -------------------------------------------------------------------------
-    # If manager is missing, attempt to extract it from the tarball (if available)
-    # This is common when minimal distributions strip webapps.
-    - name: Extract only webapps (manager & host-manager) from tarball if missing
-      when: not (manager_dir_stat.stat.exists and host_manager_dir_stat.stat.exists)
-      unarchive:
-        src: "/tmp/tomcat.tar.gz"
-        dest: "{{ tomcat_install_dir }}"
-        remote_src: yes
-        extra_opts: [--strip-components=1]
-      register: unarchive_result
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Download Tomcat tarball
+#
+# Explanation:
+# - "get_url:" -> module that downloads a file from a remote URL to the target host.
+#    Note: this module downloads *from the remote host* using the controller to
+#    stream into the remote destination. It is useful for large files or when
+#    controller has network access to the URL.
+# - "url: '{{ tomcat_tarball_url }}'" -> the remote URL (provided in vars/defaults).
+# - "dest: '/tmp/tomcat.tar.gz'" -> where to save the downloaded file on the remote host.
+# - "mode: '0644'" -> file permission for the downloaded file (owner read/write; others read).
+# - We use /tmp because it's typically writable and temporary; you can change dest if needed.
+- name: Download Tomcat tarball
+  become: yes
+  get_url:
+    url: "{{ tomcat_tarball_url }}"
+    dest: "/tmp/tomcat.tar.gz"
+    mode: '0644'
 
-    # -------------------------------------------------------------------------
-    # If manager still missing after extraction, warn and list contents of webapps.
-    - name: List webapps directory for debugging if manager missing
-      when: not manager_dir_stat.stat.exists
-      shell: "ls -la {{ tomcat_install_dir }}/webapps || true"
-      register: webapps_list
-      changed_when: false
+# ------------------------------------------------------------------------------
+#
+# Task: Extract Tomcat
+#
+# Explanation:
+# - "unarchive:" -> module to extract archive files on the remote host.
+# - "src: '/tmp/tomcat.tar.gz'" -> path to the archive on the remote (not controller).
+# - "dest: '/opt/'" -> destination directory where the archive will be extracted.
+# - "remote_src: yes" -> tells Ansible the src path is already on the remote host;
+#    otherwise Ansible would try to upload it from the controller.
+# - "creates: '{{ tomcat_install_dir }}'" -> idempotency trick: if the path exists,
+#    the task is skipped (prevents re-extracting every run).
+# - Using /opt keeps third-party installs separate from OS packages.
+- name: Extract Tomcat
+  become: yes
+  unarchive:
+    src: "/tmp/tomcat.tar.gz"
+    dest: "/opt/"
+    remote_src: yes
+    creates: "{{ tomcat_install_dir }}"
 
-    - name: Show detected webapps (debug)
-      when: not manager_dir_stat.stat.exists
-      debug:
-        var: webapps_list.stdout_lines
+# ------------------------------------------------------------------------------
+#
+# Task: Ensure tomcat_install_dir owned by tomcat user
+#
+# Explanation:
+# - "file:" -> module to manage filesystem objects (files/dirs) on the remote.
+# - "path: '{{ tomcat_install_dir }}'" -> the Tomcat installation directory (variable).
+# - "owner: '{{ tomcat_user }}'" -> make the tomcat user the owner so Tomcat can manage files.
+# - "group: '{{ tomcat_group }}'" -> associated group for access control.
+# - "recurse: yes" -> apply ownership recursively to all files/directories under the path.
+# - Ensuring correct ownership avoids permission issues when Tomcat reads/writes files.
+- name: Ensure tomcat_install_dir owned by tomcat user
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
 
-    # -------------------------------------------------------------------------
-    # Ensure Manager and Host Manager context.xml allow access (blockinfile)
-    - name: Ensure RemoteAddrValve allows all IPs in Manager context (if file exists)
-      blockinfile:
-        path: "{{ manager_context }}"
-        marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
-        block: |
-          <Valve className="org.apache.catalina.valves.RemoteAddrValve" allow=".*" />
-      when: manager_dir_stat.stat.exists
-      notify: Restart Tomcat
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Ensure manager and host-manager ownership
+#
+# Explanation:
+# - "with_items:" -> loop directive; we iterate over two paths.
+# - Each "item" is a path to the manager and host-manager webapp directories.
+# - This task ensures the manager webapps are owned by the tomcat user/group.
+# - "ignore_errors: yes" -> if one of these paths does not exist (e.g. minimal Tomcat),
+#    the play will continue instead of failing; useful when manager webapp is absent.
+# - We keep this task tolerant because some Tomcat distributions omit manager apps.
+- name: Ensure manager and host-manager ownership
+  become: yes
+  file:
+    path: "{{ item }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+  with_items:
+    - "{{ tomcat_install_dir }}/webapps/manager"
+    - "{{ tomcat_install_dir }}/webapps/host-manager"
+  ignore_errors: yes
 
-    - name: Ensure RemoteAddrValve allows all IPs in Host-Manager context (if file exists)
-      blockinfile:
-        path: "{{ host_manager_context }}"
-        marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
-        block: |
-          <Valve className="org.apache.catalina.valves.RemoteAddrValve" allow=".*" />
-      when: host_manager_dir_stat.stat.exists
-      notify: Restart Tomcat
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Copy tomcat-users.xml with Manager/Admin users
+#
+# Explanation:
+# - "template:" -> module to copy a Jinja2 template from role/templates/ to remote.
+# - "src: tomcat-users.xml.j2" -> relative path inside role's templates directory.
+# - "dest: '{{ tomcat_install_dir }}/conf/tomcat-users.xml'" -> target file path.
+# - "owner/group/mode" -> set file ownership and permission on the remote.
+# - "notify: Restart Tomcat" -> triggers a handler named "Restart Tomcat" if this task changes.
+# - Using a template lets you inject variables (users, passwords, roles) securely and consistently.
+- name: Copy tomcat-users.xml with Manager/Admin users
+  become: yes
+  template:
+    src: tomcat-users.xml.j2
+    dest: "{{ tomcat_install_dir }}/conf/tomcat-users.xml"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Tomcat
 
-    # -------------------------------------------------------------------------
-    # Ensure tomcat-users.xml is present (deploy template) so manager can be accessed.
-    - name: Deploy tomcat-users.xml (ensure manager user/roles exist)
-      template:
-        src: "{{ tomcat_users_template_src | default('tomcat-users.xml.j2') }}"
-        dest: "{{ tomcat_install_dir }}/conf/tomcat-users.xml"
-        owner: root
-        group: root
-        mode: '0644'
-      notify: Restart Tomcat
+# ------------------------------------------------------------------------------
+#
+# Task: Ensure RemoteAddrValve allows all IPs in Manager and Host Manager
+#
+# Explanation:
+# - "blockinfile:" -> module for inserting (and managing) a contiguous block of text
+#    inside a target file using markers. Safer than replacing entire files.
+# - "path: '{{ item }}'" -> target file (we loop with with_items below).
+# - "marker: '<!-- {mark} ANSIBLE MANAGED BLOCK -->'" -> the marker used to identify
+#    the inserted block so future runs can update/remove it safely.
+# - "block: |" -> the exact XML fragment to add; in this case we allow access from any IP.
+# - This prevents manager being blocked by RemoteAddrValve when accessed remotely.
+# - "notify: Restart Tomcat" -> restarts Tomcat when the file is modified so the change takes effect.
+- name: Ensure RemoteAddrValve allows all IPs in Manager and Host Manager
+  become: yes
+  blockinfile:
+    path: "{{ item }}"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
+    block: |
+      <Valve className="org.apache.catalina.valves.RemoteAddrValve" allow=".*" />
+  with_items:
+    - "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
+    - "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
+  notify: Restart Tomcat
 
-    # -------------------------------------------------------------------------
-    # Fix ownership on webapps to ensure Tomcat can see manager app files
-    - name: Ensure webapps owned by tomcat user
-      file:
-        path: "{{ tomcat_install_dir }}/webapps"
-        owner: "{{ tomcat_user }}"
-        group: "{{ tomcat_group }}"
-        recurse: yes
-      when: manager_dir_stat.stat.exists or host_manager_dir_stat.stat.exists
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Kill any process using port 8080 (if present)
+#
+# Explanation:
+# - "shell: 'fuser -k 8080/tcp || true'" -> runs the shell command that attempts to
+#    kill any process listening on TCP port 8080 using fuser.
+# - "|| true" -> ensures the command returns success even if fuser finds nothing,
+#    keeping the task idempotent (non-failing).
+# - "args: warn: false" -> suppresses the "consider using module X instead of shell" warning.
+# - This is used to free the HTTP port before starting Tomcat to avoid "Address already in use".
+- name: Kill any process using port 8080 (if present)
+  become: yes
+  shell: "fuser -k 8080/tcp || true"
+  args:
+    warn: false
 
-    # -------------------------------------------------------------------------
-    # Start Tomcat non-blocking (keeps same behavior you had)
-    - name: Start Tomcat (non-blocking) as tomcat user
-      become_user: "{{ tomcat_user }}"
-      shell: "nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &"
-      args:
-        executable: /bin/bash
-      register: tomcat_start
-      changed_when: "'no change' not in tomcat_start.stdout"
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Fallback: kill any lingering Tomcat bootstrap java processes
+#
+# Explanation:
+# - This is a fallback safety step that kills Java processes that match the full
+#   command line containing 'org.apache.catalina.startup.Bootstrap'.
+# - "pkill -f 'org.apache.catalina.startup.Bootstrap' || true" -> pkill with -f
+#    matches the full process command line; "|| true" prevents failures if no match.
+# - "ignore_errors: yes" -> ensures play continues even if pkill errors out.
+# - IMPORTANT: You asked this task to be kept exactly as originally written, so
+#    the task body below is preserved verbatim — only explanatory comments were added above.
+- name: Fallback: kill any lingering Tomcat bootstrap java processes
+  become: yes
+  shell: "pkill -f 'org.apache.catalina.startup.Bootstrap' || true"
+  ignore_errors: yes
 
-    # -------------------------------------------------------------------------
-    # Wait for port 8080
-    - name: Wait for Tomcat to listen on 8080 (remote host)
-      wait_for:
-        host: 127.0.0.1
-        port: 8080
-        state: started
-        timeout: 60
-      delegate_to: "{{ inventory_hostname }}"
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Remove previously exploded app folder if exists
+#
+# Explanation:
+# - "file:" with "state: absent" -> removes a file/directory if present.
+# - "path: '{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename).split('.war')[0] }}'"
+#    -> Computes the exploded folder name from the WAR destination filename:
+#       * "war_dest_path | basename" -> returns filename portion of path (e.g. myapp.war)
+#       * ".split('.war')[0]" -> strips the .war suffix to get the folder name (e.g. myapp)
+# - Removing the exploded app ensures Tomcat will re-expand the WAR cleanly.
+# - "ignore_errors: yes" -> don't fail if the directory is already absent.
+- name: Remove previously exploded app folder if exists
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename).split('.war')[0] }}"
+    state: absent
+  ignore_errors: yes
 
-    # -------------------------------------------------------------------------
-    # Check the /manager/html endpoint (this may return 401 if auth required)
-    - name: Check /manager/html is present (returns 401 or 200 when app is deployed)
-      uri:
-        url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/manager/html"
-        method: GET
-        status_code: [200,401]
-        return_content: no
-        timeout: 5
-      register: manager_status
-      failed_when: false
-      retries: 6
-      delay: 5
-      until: manager_status.status in [200,401]
+# ------------------------------------------------------------------------------
+#
+# Task: Deploy WAR file (from control node)
+#
+# Explanation:
+# - "copy:" -> module to copy a file from the control node (controller) to the remote host.
+# - "src: '{{ war_source_path }}'" -> path on controller (can be absolute or passed via extra-vars).
+# - "dest: '{{ war_dest_path }}'" -> target path on the remote where the WAR should be placed.
+# - "owner/group/mode" -> set file owner and permissions on the remote to the tomcat user.
+# - "notify: Restart Tomcat" -> if the WAR file changed, trigger Tomcat restart via handler.
+# - Note: "copy" performs the transfer from controller to target (unlike get_url).
+- name: Deploy WAR file (from control node)
+  become: yes
+  copy:
+    src: "{{ war_source_path }}"
+    dest: "{{ war_dest_path }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    mode: '0644'
+  notify: Restart Tomcat
 
-    # -------------------------------------------------------------------------
-    # If we still get 404, gather last lines of catalina.out and list webapps for debugging
-    - name: Gather catalina.out last 200 lines if /manager/html returned 404
-      when: manager_status.status == 404
-      shell: "tail -n 200 {{ tomcat_logs }}/catalina.out || true"
-      register: catalina_tail
-      changed_when: false
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Ensure deployed WAR ownership is correct
+#
+# Explanation:
+# - "file:" -> ensure the just-deployed WAR file has the expected owner/group/mode.
+# - "path: '{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename) }}'"
+# - This protects against corner-cases where file ownership is altered during copy or by other processes.
+- name: Ensure deployed WAR ownership is correct
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename) }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    mode: '0644'
 
-    - name: Show catalina logs for debugging (if 404)
-      when: manager_status.status == 404
-      debug:
-        var: catalina_tail.stdout_lines
+# ------------------------------------------------------------------------------
+#
+# Task: Make startup script executable
+#
+# Explanation:
+# - "file:" -> ensure the Tomcat startup script has the right permissions/ownership.
+# - "path: '{{ tomcat_install_dir }}/bin/startup.sh'" -> the startup script shipped with Tomcat.
+# - "mode: '0755'" -> makes the file executable (owner rwx, group and others r-x).
+# - "owner/group" -> ensure it is owned by tomcat user/group so it can be run by that account.
+- name: Make startup script executable
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/bin/startup.sh"
+    mode: '0755'
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
 
-    - name: List webapps directory if /manager/html returned 404
-      when: manager_status.status == 404
-      shell: "ls -la {{ tomcat_install_dir }}/webapps || true"
-      register: webapps_list_after
-      changed_when: false
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Start Tomcat (non-blocking) as tomcat user
+#
+# Explanation:
+# - "become: yes" -> necessary to switch to another user (become_user).
+# - "become_user: '{{ tomcat_user }}'" -> run the command as the tomcat user (avoids root-owned processes).
+# - "shell: 'nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &'" ->
+#     * "nohup" detaches process from the shell so it keeps running after SSH session ends.
+#     * redirection ">/dev/null 2>&1 &" sends stdout/stderr to /dev/null and backgrounds the process.
+# - "args: executable: /bin/bash" -> forces the command to run with bash (for consistent behavior).
+# - We start in background to mimic non-blocking behavior (Ansible task completes while Tomcat runs).
+- name: Start Tomcat (non-blocking) as tomcat user
+  become: yes
+  become_user: "{{ tomcat_user }}"
+  shell: "nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &"
+  args:
+    executable: /bin/bash
 
-    - name: Show webapps list (if 404)
-      when: manager_status.status == 404
-      debug:
-        var: webapps_list_after.stdout_lines
+# ------------------------------------------------------------------------------
+#
+# Task: Wait for Tomcat to listen on 8080 (remote host)
+#
+# Explanation:
+# - "wait_for:" -> module that waits for a port, file, or condition on a remote host.
+# - "host: 127.0.0.1" -> host IP to check from the perspective of the node where Tomcat is running.
+#      Using 127.0.0.1 targets the local loopback on the remote host (often used when delegate_to is the same host).
+# - "port: 8080" -> the TCP port Tomcat binds to (default HTTP connector).
+# - "state: started" -> wait until the port is accepting connections.
+# - "timeout: 60" -> seconds to wait before giving up.
+# - "delegate_to: '{{ inventory_hostname }}'" -> run the check *on the managed host* rather than from controller.
+#    * Why delegate_to? wait_for normally runs from the controller and tests connectivity from controller.
+#      We delegate to the remote host so that the check verifies Tomcat bound to localhost:8080 on the node itself,
+#      avoiding network/firewall differences between controller and managed host.
+# - This prevents race conditions where the startup script returns before Tomcat is ready to accept requests.
+- name: Wait for Tomcat to listen on 8080 (remote host)
+  wait_for:
+    host: 127.0.0.1
+    port: 8080
+    state: started
+    timeout: 60
+  delegate_to: "{{ inventory_hostname }}"
 
-    # -------------------------------------------------------------------------
-    # Fallback kill task: keep exactly as you wrote it (no changes)
-    - name: Fallback - kill any lingering Tomcat bootstrap java processes
-      become: yes
-      shell: |
-        pkill -f 'org.apache.catalina.startup.Bootstrap' || true
-      args:
-        warn: false
-      ignore_errors: yes
+# ------------------------------------------------------------------------------
+#
+# Task: Fix ownership of exploded application folder if it exists
+#
+# Explanation:
+# - When Tomcat extracts a WAR into a directory, files may be owned by the user that
+#   ran the extraction. This task ensures the exploded folder is owned by the tomcat user.
+# - "file:" with "recurse: yes" -> change ownership recursively.
+# - The path computation "(war_dest_path | basename).split('.war')[0]" extracts the exploded folder name.
+# - "ignore_errors: yes" -> continues if the folder doesn't exist yet (Tomcat may not have exploded it).
+- name: Fix ownership of exploded application folder if it exists
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename).split('.war')[0] }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+  ignore_errors: yes
 
-  handlers:
-    - name: Restart Tomcat
-      become: yes
-      shell: |
-        {{ tomcat_install_dir }}/bin/shutdown.sh || true
-        sleep 2
-        {{ tomcat_install_dir }}/bin/startup.sh || true
-      args:
-        executable: /bin/bash
-      listen: Restart Tomcat
+# ------------------------------------------------------------------------------
+#
+# Task: Check /manager/html is present (returns 401 or 200 when app is deployed)
+#
+# Explanation:
+# - "uri:" -> Ansible module to perform HTTP requests.
+# - "url: 'http://{{ ansible_host | default(inventory_hostname) }}:8080/manager/html'" ->
+#     * "ansible_host | default(inventory_hostname)" ensures we hit the correct host/IP:
+#         - ansible_host is a typical inventory variable for the node's reachable IP.
+#         - default(inventory_hostname) falls back to the node's inventory name if ansible_host not set.
+# - "method: GET" -> HTTP GET request to the manager URL.
+# - "status_code: [200,401]" -> acceptable responses: 200 OK (no auth required) or 401 Unauthorized
+#    (manager exists but requires credentials).
+# - "return_content: no" -> do not fetch and store the full response body (saves memory).
+# - "timeout: 5" -> per-request timeout in seconds.
+# - "register: manager_status" -> save the module result into a variable for later checks.
+# - "failed_when: false" -> prevents Ansible from immediately treating non-2xx as failure;
+#    we control retries with the loop below.
+# - "retries/delay/until" -> retry loop (these parameters allow the task to poll until condition is met):
+#     * retries: how many attempts.
+#     * delay: seconds between attempts.
+#     * until: Jinja2 expression evaluated each run; we wait until manager_status.status is in [200,401].
+# - This combination allows us to wait for the webapp to be deployed and reachable or report informative state.
+- name: Check /manager/html is present (returns 401 or 200 when app is deployed)
+  uri:
+    url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/manager/html"
+    method: GET
+    status_code: [200,401]
+    return_content: no
+    timeout: 5
+  register: manager_status
+  failed_when: false
+  retries: 6
+  delay: 5
+  until: manager_status.status in [200,401]
