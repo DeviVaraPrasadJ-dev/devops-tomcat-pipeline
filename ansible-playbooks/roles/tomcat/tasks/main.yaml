@@ -8,7 +8,7 @@
 
 - name: Ensure Java is installed (RHEL)
   yum:
-    name: java-11-openjdk
+    name: java-21-openjdk
     state: present
   become: yes
   when: ansible_os_family == "RedHat"
