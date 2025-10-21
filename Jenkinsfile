@@ -24,21 +24,6 @@ pipeline {
                 }
             }
         }
-        stage('Terraform Destroy') {
-            steps {
-                dir(TF_DIR) {
-                    withEnv([
-                        "AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}",
-                        "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}"
-                    ]) {
-                        sh '''
-                            terraform destroy -auto-approve \
-                                -var "key_name=${KEY_NAME}"
-                        '''
-                    }
-                }
-            }
-        }
 
         stage('Terraform Init') {
             steps {
