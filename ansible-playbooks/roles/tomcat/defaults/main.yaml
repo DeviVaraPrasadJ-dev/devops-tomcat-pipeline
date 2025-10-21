@@ -8,5 +8,5 @@ tomcat_manager_password: "changeme"
 
 java_package: "openjdk-21-jdk"
 
-war_source_path: "{{ playbook_dir }}/../javaapp-tomcat/target/app.war"
-war_dest_path: "{{ tomcat_install_dir }}/webapps/app.war"
+war_source_path: "{{ playbook_dir }}/../javaapp-tomcat/target/*.war"
+war_dest_path: "{{ tomcat_install_dir }}/webapps/*.war"
