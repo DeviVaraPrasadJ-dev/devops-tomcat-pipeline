@@ -28,7 +28,12 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir(TF_DIR) {
-                    sh 'terraform init'
+                    withEnv([
+                        "AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}",
+                        "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}"
+                    ]) {
+                        sh 'terraform init'
+                    }
                 }
             }
         }
@@ -36,10 +41,15 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 dir(TF_DIR) {
-                    sh """
-                        terraform apply -auto-approve \
-                            -var 'key_name=${KEY_NAME}'
-                    """
+                    withEnv([
+                        "AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}",
+                        "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}"
+                    ]) {
+                        sh """
+                            terraform apply -auto-approve \
+                                -var 'key_name=${KEY_NAME}'
+                        """
+                    }
                 }
             }
         }
@@ -60,7 +70,7 @@ pipeline {
 
         stage('Deploy Tomcat & WAR using Ansible') {
             steps {
-                sshagent(['jenkins-singapore']) {  // <-- Use SSH Agent with your credential ID here
+                sshagent(['jenkins-singapore']) {  // Use SSH Agent with your SSH key credential ID
                     dir(ANSIBLE_DIR) {
                         sh """
                             ansible-playbook -i ${EC2_IP}, -u ubuntu deploy-tomcat.yml
