@@ -1,27 +1,24 @@
 resource "aws_instance" "ansible_server" {
-  ami           = var.ami_id
-  instance_type = var.instance_type
-  key_name      = var.key_name
-
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  key_name               = var.key_name
   associate_public_ip_address = true
+  vpc_security_group_ids = [aws_security_group.allow_ssh.id]
 
   tags = {
     Name = "Ansible-EC2"
   }
-
-  vpc_security_group_ids = [aws_security_group.allow_ssh.id] # Add this to control SSH access
 }
 
 resource "aws_security_group" "allow_ssh" {
   name        = "allow_ssh"
-  description = "Allow SSH inbound traffic"
+  description = "Allow SSH access for Jenkins"
 
   ingress {
-    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # For testing; restrict to your Jenkins IP in production
+    cidr_blocks = ["0.0.0.0/0"] 
   }
 
   egress {
