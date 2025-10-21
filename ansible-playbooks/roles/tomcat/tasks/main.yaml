@@ -204,17 +204,17 @@
 # - "block: |" -> the exact XML fragment to add; in this case we allow access from any IP.
 # - This prevents manager being blocked by RemoteAddrValve when accessed remotely.
 # - "notify: Restart Tomcat" -> restarts Tomcat when the file is modified so the change takes effect.
-- name: Allow remote access to Tomcat Manager and Host Manager
-  become: yes
-  lineinfile:
-    path: "{{ item }}"
-    regexp: '(<Valve\s+className="org\.apache\.catalina\.valves\.RemoteAddrValve".*allow=")[^"]*(".*)'
-    line: '\1.*\2'
-    backrefs: yes
-  with_items:
-    - "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
-    - "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
-  notify: Restart Tomcat
+- name: Disable access restriction in manager context.xml
+   replace:
+   path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version}}/webapps/manager/META-INF/context.xml"
+   regexp: '(<Valve className="org.apache.catalina.valves.RemoteAddrValve".*?/>)'
+   replace: '<!-- \1 -->'
+
+- name: Disable access restriction in host-manager context.xml
+   replace:
+   path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/host-manager/META-INF/context.xml"
+   regexp: '(<Valve className="org.apache.catalina.valves.RemoteAddrValve".*?/>)'
+   replace: '<!-- \1 -->'
 
 # ------------------------------------------------------------------------------
 #
