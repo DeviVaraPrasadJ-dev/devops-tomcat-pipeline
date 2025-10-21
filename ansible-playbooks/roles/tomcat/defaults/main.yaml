@@ -4,7 +4,7 @@ tomcat_install_dir: "/opt/apache-tomcat-{{ tomcat_version }}"
 tomcat_tarball_url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
 
 tomcat_manager_user: "admin"
-tomcat_manager_password: "changeme"
+tomcat_manager_password: "admin1234"
 
 java_package: "openjdk-21-jdk"
 
