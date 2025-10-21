@@ -1,67 +1,82 @@
 ---
-- name: Ensure Java is installed
-  apt:
-    name: default-jdk
-    state: present
+- name: Install and Deploy Tomcat with WAR
+  hosts: all
   become: yes
-  when: ansible_os_family == "Debian"
+  vars:
+    tomcat_version: "9"
+    tomcat_group: tomcat
+    tomcat_user: tomcat
+    install_dir: /opt/tomcat
 
-- name: Ensure Java is installed (RHEL)
-  yum:
-    name: java-21-openjdk
-    state: present
-  become: yes
-  when: ansible_os_family == "RedHat"
+  tasks:
+    - name: Ensure Java is installed (Debian)
+      apt:
+        name: default-jdk
+        state: present
+      when: ansible_os_family == "Debian"
 
-- name: Create Tomcat group
-  group:
-    name: "{{ tomcat_group }}"
-    state: present
-  become: yes
+    - name: Ensure Java is installed (RHEL)
+      yum:
+        name: java-21-openjdk
+        state: present
+      when: ansible_os_family == "RedHat"
 
-- name: Create Tomcat user
-  user:
-    name: "{{ tomcat_user }}"
-    group: "{{ tomcat_group }}"
-    create_home: no
-    shell: /bin/false
-  become: yes
+    - name: Create Tomcat group
+      group:
+        name: "{{ tomcat_group }}"
+        state: present
 
-- name: Download Tomcat
-  get_url:
-    url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}.0.110/bin/apache-tomcat-{{ tomcat_version }}.0.110.tar.gz"
-    dest: /tmp/apache-tomcat.tar.gz
-  become: yes
+    - name: Create Tomcat user
+      user:
+        name: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        create_home: no
+        shell: /bin/false
 
-- name: Create installation directory
-  file:
-    path: "{{ install_dir }}"
-    state: directory
-    owner: "{{ tomcat_user }}"
-    group: "{{ tomcat_group }}"
-  become: yes
+    - name: Download Tomcat
+      get_url:
+        url: "https://downloads.apache.org/tomcat/tomcat-{{ tomcat_version }}/v{{ tomcat_version }}.0.110/bin/apache-tomcat-{{ tomcat_version }}.0.110.tar.gz"
+        dest: /tmp/apache-tomcat.tar.gz
 
-- name: Extract Tomcat
-  unarchive:
-    src: /tmp/apache-tomcat.tar.gz
-    dest: "{{ install_dir }}"
-    remote_src: yes
-    creates: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78"
-  become: yes
+    - name: Create installation directory
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
 
-- name: Update permissions
-  file:
-    path: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78"
-    state: directory
-    owner: "{{ tomcat_user }}"
-    group: "{{ tomcat_group }}"
-    recurse: yes
-  become: yes
+    - name: Extract Tomcat
+      unarchive:
+        src: /tmp/apache-tomcat.tar.gz
+        dest: "{{ install_dir }}"
+        remote_src: yes
+        creates: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110"
 
-- name: Start Tomcat service
-  shell: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78/bin/startup.sh"
-  args:
-    executable: /bin/bash
-  become: yes
-  notify:
-    - Check Tomcat Status
+    - name: Update permissions
+      file:
+        path: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110"
+        state: directory
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        recurse: yes
+
+    - name: Deploy WAR file to Tomcat
+      copy:
+        src: /var/lib/jenkins/workspace/devops-tomcat-pipeline/javaapp-tomcat/target/artisantek-app.war
+        dest: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110/webapps/artisantek-app.war"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: '0644'
+      notify:
+        - Restart Tomcat
+
+    - name: Start Tomcat service
+      shell: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110/bin/startup.sh"
+      args:
+        executable: /bin/bash
+
+  handlers:
+    - name: Restart Tomcat
+      shell: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110/bin/shutdown.sh && sleep 5 && {{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.110/bin/startup.sh"
+      args:
+        executable: /bin/bash
