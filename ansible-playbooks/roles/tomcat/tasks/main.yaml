@@ -332,11 +332,9 @@
 # - "shell: 'nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &'" ->
 #     * "nohup" detaches process from the shell so it keeps running after SSH session ends.
 #     * redirection ">/dev/null 2>&1 &" sends stdout/stderr to /dev/null and backgrounds the process.
-# - "args: executable: /bin/bash" -> forces the command to run with bash (for consistent behavior).
 # - We start in background to mimic non-blocking behavior (Ansible task completes while Tomcat runs).
-- name: Start Tomcat (non-blocking) as tomcat user
+- name: Start Tomcat (non-blocking)
   become: yes
-  become_user: "{{ tomcat_user }}"
   shell: "nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &"
   args:
     executable: /bin/bash
