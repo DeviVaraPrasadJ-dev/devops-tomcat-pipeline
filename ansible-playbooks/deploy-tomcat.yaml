@@ -1,6 +1,7 @@
 ---
-  - name: Deploy Tomcat9 on EC2
-    hosts: all
-    become: yes
-    roles:
-      - tomcat
+- name: Deploy Tomcat9 on EC2
+  hosts: all
+  become: yes
+  roles:
+    - tomcat
+
