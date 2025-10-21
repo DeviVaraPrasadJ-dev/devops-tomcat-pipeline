@@ -1,10 +1,8 @@
 ---
-- name: Check Tomcat Status
-  shell: "ps -ef | grep '[t]omcat'"
-  register: tomcat_status
-  ignore_errors: yes
-  become: yes
-
-- name: Print Tomcat status
-  debug:
-    var: tomcat_status.stdout_lines
+- name: Restart Tomcat
+  shell: |
+    {{ tomcat_install_dir }}/bin/shutdown.sh || true
+    sleep 5
+    {{ tomcat_install_dir }}/bin/startup.sh
+  args:
+    executable: /bin/bash
