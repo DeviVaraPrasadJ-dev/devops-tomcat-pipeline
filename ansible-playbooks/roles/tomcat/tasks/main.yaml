@@ -29,7 +29,7 @@
 
 - name: Download Tomcat
   get_url:
-    url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}.0.78/bin/apache-tomcat-{{ tomcat_version }}.0.78.tar.gz"
+    url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}.0.110/bin/apache-tomcat-{{ tomcat_version }}.0.110.tar.gz"
     dest: /tmp/apache-tomcat.tar.gz
   become: yes
 
