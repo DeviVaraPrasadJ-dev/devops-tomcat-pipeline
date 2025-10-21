@@ -2,6 +2,7 @@
 - name: Deploy Tomcat9 on EC2
   hosts: all
   become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
   roles:
     - tomcat
-
