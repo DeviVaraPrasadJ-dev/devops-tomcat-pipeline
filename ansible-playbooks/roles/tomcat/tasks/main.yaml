@@ -230,8 +230,7 @@
 - name: Kill any process using port 8080 (if present)
   become: yes
   shell: "fuser -k 8080/tcp || true"
-  args:
-    warn: false
+  ignore_errors: yes
 
 # ------------------------------------------------------------------------------
 #
