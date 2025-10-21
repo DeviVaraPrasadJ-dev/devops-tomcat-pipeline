@@ -1,0 +1,10 @@
+---
+- name: Check Tomcat Status
+  shell: "ps -ef | grep '[t]omcat'"
+  register: tomcat_status
+  ignore_errors: yes
+  become: yes
+
+- name: Print Tomcat status
+  debug:
+    var: tomcat_status.stdout_lines
