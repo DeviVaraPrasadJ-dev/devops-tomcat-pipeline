@@ -85,7 +85,7 @@ pipeline {
                 
                 stage('Deploy Tomcat & WAR using Ansible') {
                     steps {
-                        withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-singapore', keyFileVariable: 'SSH_KEY')]) {
+                        withCredentials([sshUserPrivateKey(credentialsId: 'Jenkins-singapore', keyFileVariable: 'SSH_KEY')]) {
                             sh """
                                 # Create Ansible inventory file dynamically
                                 echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}" > inventory.ini
