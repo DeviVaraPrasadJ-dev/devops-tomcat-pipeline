@@ -82,18 +82,21 @@ pipeline {
                 }
             }
         }
-
-        stage('Deploy Tomcat & WAR using Ansible') {
-            steps {
-                sshagent(['jenkins-singapore']) {  // Use SSH Agent with your SSH key credential ID
-                    dir(ANSIBLE_DIR) {
-                        sh """
-                            ansible-playbook -i ${EC2_IP}, -u ubuntu deploy-tomcat.yml
-                        """
+                
+                stage('Deploy Tomcat & WAR using Ansible') {
+                    steps {
+                        withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-singapore', keyFileVariable: 'SSH_KEY')]) {
+                            sh """
+                                # Create Ansible inventory file dynamically
+                                echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}" > inventory.ini
+                                
+                                # Run ansible-playbook with the inventory file
+                                ansible-playbook -i inventory.ini deploy-tomcat.yml
+                            """
+                        }
                     }
                 }
-            }
-        }
+
     }
 
     post {
