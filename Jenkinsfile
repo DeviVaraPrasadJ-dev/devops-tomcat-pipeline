@@ -88,7 +88,7 @@ stage('Deploy Tomcat & WAR using Ansible') {
           echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY} ansible_python_interpreter=/usr/bin/python3" > inventory.ini
 
           # Run the playbook
-          ansible-playbook -i inventory.ini deploy-tomcat.yml --ssh-extra-args='-o StrictHostKeyChecking=no'
+          ansible-playbook -i inventory.ini deploy-tomcat.yaml --ssh-extra-args='-o StrictHostKeyChecking=no'
         '''
       }
     }
