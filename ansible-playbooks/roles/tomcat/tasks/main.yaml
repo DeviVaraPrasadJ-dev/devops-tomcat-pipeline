@@ -1,25 +1,36 @@
 ---
-# ------------------------------------------------------------------------------
-# Update APT cache on the managed host.
+# ==========================================================
+# ROLE: tomcat
+# FILE: tasks/main.yaml
+# PURPOSE: Automate Tomcat installation, configuration, and WAR deployment
+# ==========================================================
+
+# ----------------------------------------------------------
+# TASK: Ensure apt cache is up-to-date
 # Module: apt
-# - update_cache: when true, runs 'apt-get update' to refresh package lists.
-# - cache_valid_time: number of seconds the cache is valid; avoids frequent updates.
-# - become: escalates privileges to run apt as root (required to update package lists).
-# Use-case: ensures package metadata is current before installing packages.
+# Purpose:
+#   - Updates the system package cache before installing packages.
+#   - Ensures Ansible always has access to the latest package versions.
+# Key Parameters:
+#   update_cache: yes → refresh package lists.
+#   cache_valid_time: 3600 → reuse cache if it’s under 1 hour old.
+# ----------------------------------------------------------
 - name: Ensure apt cache is up-to-date
   become: yes
   apt:
     update_cache: yes
     cache_valid_time: 3600
 
-# ------------------------------------------------------------------------------
-# Install required packages using the apt module.
+# ----------------------------------------------------------
+# TASK: Install required packages (Java + Python)
 # Module: apt
-# - name: list of packages to ensure are installed.
-# - state: present ensures packages are installed (can also be 'latest' or 'absent').
-# - install_recommends: when no, apt will not install recommended packages.
-# - become: needed to install packages as root.
-# Use-case: installs Java + python3 + python3-apt required by Tomcat and Ansible facts.
+# Purpose:
+#   - Installs Java (needed for Tomcat) and Python3 (required by Ansible on remote host).
+# Key Parameters:
+#   name: list of packages to install.
+#   state: present → ensure installed.
+#   install_recommends: no → keeps installation minimal.
+# ----------------------------------------------------------
 - name: Install required packages (Java + python3)
   become: yes
   apt:
@@ -30,29 +41,26 @@
     state: present
     install_recommends: no
 
-# ------------------------------------------------------------------------------
-# Create a group on the target system.
+# ----------------------------------------------------------
+# TASK: Create tomcat group
 # Module: group
-# - name: group name to create.
-# - state: present ensures the group exists.
-# - become: creating groups requires root privileges.
-# Use-case: ensures the 'tomcat' group exists for permission management.
+# Purpose:
+#   - Creates a dedicated Linux group for running Tomcat securely.
+# ----------------------------------------------------------
 - name: Create tomcat group
   become: yes
   group:
     name: "{{ tomcat_group }}"
     state: present
 
-# ------------------------------------------------------------------------------
-# Create a system user for running Tomcat.
+# ----------------------------------------------------------
+# TASK: Create tomcat user
 # Module: user
-# - name: username to create.
-# - group: primary group for the user.
-# - create_home: whether to create a home directory (no for system users).
-# - system: creates a system user (uid < 1000 on many distros).
-# - shell: login shell (set to /bin/false for non-login service accounts).
-# - become: creating users requires root.
-# Use-case: ensures a dedicated non-login 'tomcat' user exists to run Tomcat.
+# Purpose:
+#   - Creates a system user dedicated to Tomcat with no login shell for security.
+#   - create_home: no → no home directory.
+#   - shell: /bin/false → cannot log in interactively.
+# ----------------------------------------------------------
 - name: Create tomcat user
   become: yes
   user:
@@ -62,14 +70,14 @@
     system: yes
     shell: /bin/false
 
-# ------------------------------------------------------------------------------
-# Download a file from a URL to the remote host.
+# ----------------------------------------------------------
+# TASK: Download Tomcat tarball
 # Module: get_url
-# - url: remote URL to fetch.
-# - dest: destination path on target machine (the controller streams the download).
-# - mode: file permission (e.g. '0644').
-# - become: writing to /tmp usually requires root for consistency.
-# Use-case: downloads the Tomcat tarball to /tmp on the managed host.
+# Purpose:
+#   - Downloads the Tomcat archive from Apache servers or an internal repo.
+#   - dest: where the tar.gz file is saved.
+#   - mode: '0644' → readable by all.
+# ----------------------------------------------------------
 - name: Download Tomcat tarball
   become: yes
   get_url:
@@ -77,15 +85,14 @@
     dest: "/tmp/tomcat.tar.gz"
     mode: '0644'
 
-# ------------------------------------------------------------------------------
-# Extract a tarball on the remote host.
+# ----------------------------------------------------------
+# TASK: Extract Tomcat archive
 # Module: unarchive
-# - src: path to archive on the remote (when remote_src: yes).
-# - dest: extraction directory on remote.
-# - remote_src: when yes, Ansible will not try to upload the archive from controller.
-# - creates: path that, if present, causes the task to be skipped (idempotency).
-# - become: extraction to /opt requires root.
-# Note: 'creates' prevents repeated extraction; remove if you want to force re-extract.
+# Purpose:
+#   - Extracts Tomcat tarball into /opt directory.
+#   - remote_src: yes → indicates the archive is already on the target host.
+#   - creates: skips extraction if target directory already exists.
+# ----------------------------------------------------------
 - name: Extract Tomcat
   become: yes
   unarchive:
@@ -94,14 +101,13 @@
     remote_src: yes
     creates: "{{ tomcat_install_dir }}"
 
-# ------------------------------------------------------------------------------
-# Ensure the Tomcat install directory and contents are owned by the tomcat user.
+# ----------------------------------------------------------
+# TASK: Set ownership for Tomcat installation directory
 # Module: file
-# - path: target path to operate on.
-# - owner / group: set filesystem ownership.
-# - recurse: when yes, apply the ownership change recursively to all subfiles/dirs.
-# - become: changing ownership requires root.
-# Use-case: ensures Tomcat files are owned by the tomcat user to avoid permission issues.
+# Purpose:
+#   - Ensures all Tomcat files belong to tomcat user and group.
+#   - recurse: yes → apply ownership recursively to all files/subdirs.
+# ----------------------------------------------------------
 - name: Ensure tomcat_install_dir owned by tomcat user
   become: yes
   file:
@@ -110,34 +116,13 @@
     group: "{{ tomcat_group }}"
     recurse: yes
 
-# ------------------------------------------------------------------------------
-# Ensure manager and host-manager directories are owned by tomcat:tomcat.
-# Module: file
-# - recurse: ensures all files and subfolders under the provided path are chowned.
-# - with_items: iterate over both manager and host-manager paths.
-# - ignore_errors: in case a path doesn't exist yet (play continues).
-# Use-case: fixes permissions when extraction was done as root.
-- name: Ensure manager and host-manager ownership
-  become: yes
-  file:
-    path: "{{ item }}"
-    owner: "{{ tomcat_user }}"
-    group: "{{ tomcat_group }}"
-    recurse: yes
-  with_items:
-    - "{{ tomcat_install_dir }}/webapps/manager"
-    - "{{ tomcat_install_dir }}/webapps/host-manager"
-  ignore_errors: yes
-
-# ------------------------------------------------------------------------------
-# Deploy the tomcat-users.xml template.
+# ----------------------------------------------------------
+# TASK: Deploy tomcat-users.xml (with admin/manager roles)
 # Module: template
-# - src: Jinja2 template in the role's templates/ directory.
-# - dest: path where the rendered file will be placed on the managed host.
-# - owner/group/mode: set ownership and perms on the output file.
-# - notify: triggers the handler 'Restart Tomcat' (declared in role handlers).
-# - become: writing into Tomcat conf requires root.
-# Use-case: places users and roles for manager/admin access.
+# Purpose:
+#   - Replaces tomcat-users.xml with a templated version containing admin users.
+#   - mode: '0644' → read by all, write by root only.
+# ----------------------------------------------------------
 - name: Copy tomcat-users.xml with Manager/Admin users
   become: yes
   template:
@@ -148,16 +133,14 @@
     mode: '0644'
   notify: Restart Tomcat
 
-# ------------------------------------------------------------------------------
-# Ensure RemoteAddrValve allows access (block insertion).
+# ----------------------------------------------------------
+# TASK: Modify context.xml to allow all IPs for Manager and Host Manager
 # Module: blockinfile
-# - path: file to insert the block into.
-# - marker: identifies the block as Ansible-managed.
-# - block: the XML fragment to insert.
-# - with_items: operate on multiple files.
-# - notify: restart Tomcat so changes take effect.
-# - become: editing app META-INF files requires root.
-# Note: blockinfile appends a marker block; it's safer than replacing entire file.
+# Purpose:
+#   - Inserts a Valve configuration to disable IP restriction (allow all IPs).
+#   - marker: adds clear begin/end markers for managed blocks.
+#   - with_items: applies the same block to both manager and host-manager.
+# ----------------------------------------------------------
 - name: Ensure RemoteAddrValve allows all IPs in Manager and Host Manager
   become: yes
   blockinfile:
@@ -170,56 +153,13 @@
     - "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
   notify: Restart Tomcat
 
-# ------------------------------------------------------------------------------
-# Free port 8080 if a process is currently listening there.
-# Module: shell
-# - We call 'fuser -k 8080/tcp' to kill any process that holds the TCP port.
-# - '|| true' prevents the task from failing when no process is found.
-# - args: warn: false disables shell warning messages in output.
-# - become: killing processes requires elevated privileges.
-# Use-case: prevents "Address already in use" on Tomcat startup.
-- name: Kill any process using port 8080 (if present)
-  become: yes
-  shell: "fuser -k 8080/tcp || true"
-  args:
-    warn: false
-
-# ------------------------------------------------------------------------------
-# Fallback kill step to remove Java Tomcat bootstrap processes if still present.
-# Module: shell
-# - pkill -f matches processes by full command line.
-# - '|| true' keeps task idempotent/safe when no process matches.
-# Use-case: extra safety to remove stale Tomcat processes left from previous runs.
-- name: Fallback: kill any lingering Tomcat bootstrap java processes
-  become: yes
-  shell: |
-    pkill -f 'org.apache.catalina.startup.Bootstrap' || true
-  args:
-    warn: false
-
-# ------------------------------------------------------------------------------
-# Remove any exploded application folder before copying the WAR.
-# Module: file
-# - path: target exploded directory (computed from war_dest_path basename).
-# - state: absent ensures the folder (and its contents) is removed if present.
-# - ignore_errors: continue if path doesn't exist.
-# Use-case: ensures Tomcat will re-expand the WAR fresh (avoids stale root ownership).
-- name: Remove previously exploded app folder if exists
-  become: yes
-  file:
-    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename).split('.war')[0] }}"
-    state: absent
-  ignore_errors: yes
-
-# ------------------------------------------------------------------------------
-# Copy the WAR file from the Ansible controller (Jenkins) to the remote host.
+# ----------------------------------------------------------
+# TASK: Deploy application WAR file
 # Module: copy
-# - src: path on the Ansible controller (control node). Use absolute path or extra-vars.
-# - dest: full path on the remote host where WAR will be placed.
-# - owner/group/mode: ensure the file is owned by the tomcat user and readable.
-# - notify: restart Tomcat so it picks up the new WAR.
-# - become: writing into /opt requires root.
-# Note: copy reads the file from controller; wildcards in 'src' are not expanded here.
+# Purpose:
+#   - Copies the built WAR file from control node (Jenkins) to the Tomcat webapps folder.
+#   - owner/group ensure Tomcat can read it.
+# ----------------------------------------------------------
 - name: Deploy WAR file (from control node)
   become: yes
   copy:
@@ -230,27 +170,43 @@
     mode: '0644'
   notify: Restart Tomcat
 
-# ------------------------------------------------------------------------------
-# Ensure the copied WAR file has correct ownership/permissions.
+# ----------------------------------------------------------
+# TASK: Ensure deployed WAR file ownership is correct
 # Module: file
-# - path: the WAR file on the managed host.
-# - owner/group/mode: enforce permissions so Tomcat (tomcat user) can read it.
-# Use-case: protect against scenarios where the copy step leaves unexpected perms.
+# Purpose:
+#   - Fixes ownership and permissions of the WAR file if copied previously.
+# ----------------------------------------------------------
 - name: Ensure deployed WAR ownership is correct
   become: yes
   file:
-    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename) }}"
+    path: "{{ tomcat_install_dir }}/webapps/artisantek-app.war"
     owner: "{{ tomcat_user }}"
     group: "{{ tomcat_group }}"
     mode: '0644'
 
-# ------------------------------------------------------------------------------
-# Ensure the startup script is executable and owned by the tomcat user.
+# ----------------------------------------------------------
+# TASK: Ensure extracted WAR folder ownership is correct
 # Module: file
-# - path: the startup.sh inside the tomcat bin directory.
-# - mode: file mode (0755 makes it executable by owner and readable/executable by group/others).
-# - owner/group: ensure the tomcat user owns the script.
-# Use-case: allows Tomcat to be started by the tomcat user.
+# Purpose:
+#   - Ensures that the extracted application folder (after WAR deploy)
+#     is fully accessible by Tomcat.
+#   - recurse: yes → recursive ownership and permission set.
+# ----------------------------------------------------------
+- name: Ensure extracted WAR folder ownership is correct
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/artisantek-app"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+
+# ----------------------------------------------------------
+# TASK: Make Tomcat startup script executable
+# Module: file
+# Purpose:
+#   - Ensures startup.sh has execute permissions.
+#   - Prevents "permission denied" errors when starting Tomcat manually.
+# ----------------------------------------------------------
 - name: Make startup script executable
   become: yes
   file:
@@ -259,74 +215,29 @@
     owner: "{{ tomcat_user }}"
     group: "{{ tomcat_group }}"
 
-# ------------------------------------------------------------------------------
-# Start Tomcat in the background as the tomcat user.
+# ----------------------------------------------------------
+# TASK: Fallback – kill any lingering Tomcat Java processes
 # Module: shell
-# - become_user: run the command as the tomcat user (so process runs under that user).
-# - The command uses nohup and background operator (&) to detach process.
-# - args.executable: specify the shell to execute the command.
-# - become: to change effective user you still need privilege escalation.
-# Note: starting as the tomcat user avoids root-owned java process and permission issues.
-- name: Start Tomcat (non-blocking) as tomcat user
+# Purpose:
+#   - Sometimes Tomcat processes from older runs still occupy port 8080.
+#   - This step kills any such processes safely before restarting.
+#   - ignore_errors: yes → prevents playbook failure if no process found.
+# ----------------------------------------------------------
+- name: Fallback: kill any lingering Tomcat bootstrap java processes
   become: yes
-  become_user: "{{ tomcat_user }}"
+  shell: "pkill -f 'org.apache.catalina.startup.Bootstrap' || true"
+  ignore_errors: yes
+
+# ----------------------------------------------------------
+# TASK: Start Tomcat server (non-blocking)
+# Module: shell
+# Purpose:
+#   - Starts Tomcat in the background using nohup to prevent session hang.
+#   - Redirects stdout/stderr to /dev/null to keep output clean.
+#   - args.executable: ensures /bin/bash executes the command properly.
+# ----------------------------------------------------------
+- name: Start Tomcat (non-blocking)
+  become: yes
   shell: "nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &"
   args:
     executable: /bin/bash
-
-# ------------------------------------------------------------------------------
-# Wait until Tomcat is listening on port 8080 on the remote host.
-# Module: wait_for
-# - host: host to test (127.0.0.1 when delegated to remote host).
-# - port: port number to wait for.
-# - state: 'started' waits until the port is accepting connections.
-# - timeout: seconds to wait before task fails.
-# - delegate_to: run this check on a specific machine; here delegated to the target host.
-# Use-case: ensures Tomcat has bound the HTTP port before continuing (avoids false 404).
-- name: Wait for Tomcat to listen on 8080 (remote host)
-  wait_for:
-    host: 127.0.0.1
-    port: 8080
-    state: started
-    timeout: 60
-  delegate_to: "{{ inventory_hostname }}"
-
-# ------------------------------------------------------------------------------
-# Fix ownership of the exploded application folder (if Tomcat expanded the WAR).
-# Module: file
-# - recurse: change ownership of the directory and all children.
-# - ignore_errors: proceed even if folder does not exist.
-# Use-case: ensure the exploded app directory is owned by tomcat so the app runs correctly.
-- name: Fix ownership of exploded application folder if it exists
-  become: yes
-  file:
-    path: "{{ tomcat_install_dir }}/webapps/{{ (war_dest_path | basename).split('.war')[0] }}"
-    owner: "{{ tomcat_user }}"
-    group: "{{ tomcat_group }}"
-    recurse: yes
-  ignore_errors: yes
-
-# ------------------------------------------------------------------------------
-# Verify Manager app is present by requesting /manager/html.
-# Module: uri
-# - url: remote URL to check (HTTP).
-# - method: HTTP method (GET).
-# - status_code: list of acceptable status codes (401 means app exists but requires auth).
-# - return_content: set to no to avoid returning large bodies.
-# - timeout: request timeout in seconds.
-# - register: capture result for conditional checks.
-# - failed_when: allow task to continue even if not yet deployed (we control retries).
-# - retries/delay/until: loop-like mechanism to retry until condition met.
-# Use-case: validate that the manager app is deployed (401/200 indicates presence).
-- name: Check /manager/html is present (returns 401 or 200 when app is deployed)
-  uri:
-    url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/manager/html"
-    method: GET
-    status_code: [200,401]
-    return_content: no
-    timeout: 5
-  register: manager_status
-  failed_when: false
-  retries: 6
-  delay: 5
-  until: manager_status.status in [200,401]
