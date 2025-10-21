@@ -1,24 +1,60 @@
 ---
-- name: Install Java
+- name: Ensure apt cache is up-to-date
+  become: yes
   apt:
-    name: "{{ java_package }}"
-    state: present
     update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages (Java + python3)
+  become: yes
+  apt:
+    name:
+      - "{{ java_package }}"
+      - python3
+      - python3-apt
+    state: present
+    install_recommends: no
+
+- name: Create tomcat group
+  become: yes
+  group:
+    name: "{{ tomcat_group }}"
+    state: present
+
+- name: Create tomcat user
+  become: yes
+  user:
+    name: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    create_home: no
+    system: yes
+    shell: /bin/false
 
 - name: Download Tomcat tarball
+  become: yes
   get_url:
     url: "{{ tomcat_tarball_url }}"
     dest: "/tmp/tomcat.tar.gz"
     mode: '0644'
 
 - name: Extract Tomcat
+  become: yes
   unarchive:
     src: "/tmp/tomcat.tar.gz"
     dest: "/opt/"
     remote_src: yes
     creates: "{{ tomcat_install_dir }}"
 
+- name: Ensure tomcat_install_dir owned by tomcat user
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+
 - name: Copy tomcat-users.xml with Manager/Admin users
+  become: yes
   template:
     src: tomcat-users.xml.j2
     dest: "{{ tomcat_install_dir }}/conf/tomcat-users.xml"
@@ -27,25 +63,26 @@
     mode: '0644'
   notify: Restart Tomcat
 
-- name: Ensure Python is installed
-  raw: sudo apt-get update && sudo apt-get install -y python3
+- name: Deploy WAR file (from control node)
   become: yes
-
-- name: Deploy WAR file
   copy:
     src: "{{ war_source_path }}"
     dest: "{{ war_dest_path }}"
-    owner: root
-    group: root
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
     mode: '0644'
   notify: Restart Tomcat
 
 - name: Make startup script executable
+  become: yes
   file:
     path: "{{ tomcat_install_dir }}/bin/startup.sh"
     mode: '0755'
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
 
-- name: Start Tomcat
-  shell: nohup {{ tomcat_install_dir }}/bin/startup.sh &
+- name: Start Tomcat (non-blocking)
+  become: yes
+  shell: "nohup {{ tomcat_install_dir }}/bin/startup.sh >/dev/null 2>&1 &"
   args:
     executable: /bin/bash
