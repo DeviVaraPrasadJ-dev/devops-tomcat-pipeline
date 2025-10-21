@@ -85,6 +85,22 @@
     mode: '0644'
   notify: Restart Tomcat
 
+- name: Ensure deployed WAR ownership is correct
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/artisantek-app.war"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    mode: '0644'
+
+- name: Ensure extracted WAR folder ownership is correct
+  become: yes
+  file:
+    path: "{{ tomcat_install_dir }}/webapps/artisantek-app"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+
 - name: Make startup script executable
   become: yes
   file:
