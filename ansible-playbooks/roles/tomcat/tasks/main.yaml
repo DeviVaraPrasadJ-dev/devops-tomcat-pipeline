@@ -1,0 +1,67 @@
+---
+- name: Ensure Java is installed
+  apt:
+    name: default-jdk
+    state: present
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Ensure Java is installed (RHEL)
+  yum:
+    name: java-11-openjdk
+    state: present
+  become: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Create Tomcat group
+  group:
+    name: "{{ tomcat_group }}"
+    state: present
+  become: yes
+
+- name: Create Tomcat user
+  user:
+    name: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    create_home: no
+    shell: /bin/false
+  become: yes
+
+- name: Download Tomcat
+  get_url:
+    url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}.0.78/bin/apache-tomcat-{{ tomcat_version }}.0.78.tar.gz"
+    dest: /tmp/apache-tomcat.tar.gz
+  become: yes
+
+- name: Create installation directory
+  file:
+    path: "{{ install_dir }}"
+    state: directory
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+  become: yes
+
+- name: Extract Tomcat
+  unarchive:
+    src: /tmp/apache-tomcat.tar.gz
+    dest: "{{ install_dir }}"
+    remote_src: yes
+    creates: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78"
+  become: yes
+
+- name: Update permissions
+  file:
+    path: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78"
+    state: directory
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: yes
+  become: yes
+
+- name: Start Tomcat service
+  shell: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}.0.78/bin/startup.sh"
+  args:
+    executable: /bin/bash
+  become: yes
+  notify:
+    - Check Tomcat Status
