@@ -1,4 +1,4 @@
-- name: Fallback: kill any lingering Tomcat bootstrap java processes
+- name: Fallback - kill any lingering Tomcat bootstrap java processes
   become: yes
   shell: |
     pkill -f 'org.apache.catalina.startup.Bootstrap' || true
