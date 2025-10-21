@@ -11,7 +11,7 @@ resource "aws_instance" "ansible_server" {
 }
 
 resource "aws_security_group" "allow_ssh" {
-  name        = "allow_ssh"
+  name        = "allow_sshand8080"
   description = "Allow SSH access for Jenkins"
 
   ingress {
