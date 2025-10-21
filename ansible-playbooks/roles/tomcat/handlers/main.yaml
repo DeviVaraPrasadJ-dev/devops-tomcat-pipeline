@@ -1,8 +1,10 @@
 ---
 - name: Restart Tomcat
+  become: yes
   shell: |
+    set -eux
     {{ tomcat_install_dir }}/bin/shutdown.sh || true
-    sleep 5
+    sleep 3
     {{ tomcat_install_dir }}/bin/startup.sh
   args:
     executable: /bin/bash
