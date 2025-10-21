@@ -223,7 +223,7 @@
 #   - This step kills any such processes safely before restarting.
 #   - ignore_errors: yes → prevents playbook failure if no process found.
 # ----------------------------------------------------------
-- name: Fallback: kill any lingering Tomcat bootstrap java processes
+- name: Fallback- kill any lingering Tomcat bootstrap java processes
   become: yes
   shell: "pkill -f 'org.apache.catalina.startup.Bootstrap' || true"
   ignore_errors: yes
