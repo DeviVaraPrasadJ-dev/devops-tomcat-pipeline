@@ -171,7 +171,7 @@ cd terraform-infra
 terraform init
 terraform apply -auto-approve -var 'key_name=Jenkins-singapore'
 
-# After apply
+###After apply
 export EC2_IP=$(terraform output -raw public_ip)
 
 cd ../ansible-playbooks
@@ -180,6 +180,7 @@ echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=/path/to/key.pe
 ansible-playbook -i inventory.ini deploy-tomcat.yaml \
   --extra-vars "war_source_path=/path/to/javaapp-tomcat/target/artisantek-app.war war_dest_path=/opt/apache-tomcat-9.0.110/webapps/artisantek-app.war" \
   --ssh-extra-args='-o StrictHostKeyChecking=no'
+
 ##10) Verification & common checks
 
 Check Tomcat process & port:
