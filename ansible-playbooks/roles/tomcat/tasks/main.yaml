@@ -199,21 +199,41 @@
 # The regular expression captures the entire <Valve ... /> element,
 # and then wraps it in an HTML comment so Tomcat ignores it.
 # --------------------------------------------------------------
-- name: Disable access restriction in manager context.xml
+# --- Start: Ensure RemoteAddrValve inside manager/host-manager allows all IPs ---
+# Stat manager context file first so we only try to modify it when present.
+- name: Stat manager context.xml
+  stat:
+    path: "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
+  register: manager_ctx_stat
+
+- name: Replace manager RemoteAddrValve allow value to allow all IPs (multiline-safe)
+  when: manager_ctx_stat.stat.exists
   ansible.builtin.replace:
     path: "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
-    regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
-    replace: '<!-- \1 -->'
-
+    # (?s) DOTALL: let '.' match newlines so multi-line Valve elements are matched
+    regexp: '(?s)(<Valve\s+className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?allow=")[^"]*(".*?/>)'
+    replace: '\1.*\2'
+    backup: yes
+  notify: Restart Tomcat
 # --------------------------------------------------------------
 # Similarly, disable access restriction in host-manager context.xml
 # by commenting out the same <Valve> line in the host-manager context.
 # --------------------------------------------------------------
-- name: Disable access restriction in host-manager context.xml
+# Stat host-manager context file
+- name: Stat host-manager context.xml
+  stat:
+    path: "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
+  register: hostmanager_ctx_stat
+
+- name: Replace host-manager RemoteAddrValve allow value to allow all IPs (multiline-safe)
+  when: hostmanager_ctx_stat.stat.exists
   ansible.builtin.replace:
     path: "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
-    regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
-    replace: '<!-- \1 -->'
+    regexp: '(?s)(<Valve\s+className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?allow=")[^"]*(".*?/>)'
+    replace: '\1.*\2'
+    backup: yes
+  notify: Restart Tomcat
+# --- End: Valve replacement --
 
 # ------------------------------------------------------------------------------
 #
