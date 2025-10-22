@@ -194,18 +194,37 @@
 # ------------------------------------------------------------------------------
 #
 # --------------------------------------------------------------
-# This task uses the `replace` module to disable access restriction
-# in Tomcat's manager application by commenting out the <Valve> line.
-# The regular expression captures the entire <Valve ... /> element,
-# and then wraps it in an HTML comment so Tomcat ignores it.
-# --------------------------------------------------------------
-# --- Start: Ensure RemoteAddrValve inside manager/host-manager allows all IPs ---
-# Stat manager context file first so we only try to modify it when present.
+# ------------------------------------------------------------------------------
+# TASK: Stat the manager context file
+# Module: stat
+# Purpose & module explanation:
+# - 'stat' checks whether a path exists and returns metadata (mode, owner, exists).
+# - We register the result so subsequent tasks run only if the file exists.
+# - This avoids failing on Tomcat variants that don't ship the manager app.
+# Important returned fields:
+# - manager_ctx_stat.stat.exists -> boolean indicating file presence.
+# - manager_ctx_stat.stat.path -> absolute path (if exists).
+# ------------------------------------------------------------------------------
 - name: Stat manager context.xml
   stat:
     path: "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
   register: manager_ctx_stat
-
+# TASK: Replace manager RemoteAddrValve allow value to allow all IPs (multiline-safe)
+# Module: replace
+# Purpose & module explanation:
+# - 'ansible.builtin.replace' searches file contents using a regular expression
+#   and replaces the matched portion with the provided replacement text.
+# - Important options:
+#   * path: file to modify on the managed host.
+#   * regexp: a Python-compatible regular expression that finds the Valve block.
+#   * replace: replacement string; we keep prefix/suffix and set allow=".*".
+#   * backup: yes -> save a copy of the original file as context.xml.bak.TIMESTAMP.
+# - Why DOTALL / (?s): the Valve element can span multiple lines. Prefixing the
+#   regex with (?s) enables DOTALL so '.' matches newline characters and the
+#   full element is matched.
+# - Idempotence: if the Valve already has allow=".*", replace performs a no-op.
+# - notify: Restart Tomcat -> run handler only if file changes.
+# ------------------------------------------------------------------------------
 - name: Replace manager RemoteAddrValve allow value to allow all IPs (multiline-safe)
   when: manager_ctx_stat.stat.exists
   ansible.builtin.replace:
@@ -216,15 +235,22 @@
     backup: yes
   notify: Restart Tomcat
 # --------------------------------------------------------------
-# Similarly, disable access restriction in host-manager context.xml
-# by commenting out the same <Valve> line in the host-manager context.
+# TASK: Stat the host-manager context file
+# Module: stat
+# Purpose: same as above but for host-manager. Check file exists before modifying.
 # --------------------------------------------------------------
-# Stat host-manager context file
 - name: Stat host-manager context.xml
   stat:
     path: "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
   register: hostmanager_ctx_stat
-
+# --------------------------------------------------------------
+# TASK: Replace host-manager RemoteAddrValve allow value to allow all IPs
+# Module: replace
+# Purpose: identical behavior to the manager replacement; applied to host-manager.
+# Notes:
+# - We use the same regex and DOTALL flag because host-manager Valve often has same layout.
+# - backup: yes creates a .bak for easy rollback/inspection.
+# --------------------------------------------------------------
 - name: Replace host-manager RemoteAddrValve allow value to allow all IPs (multiline-safe)
   when: hostmanager_ctx_stat.stat.exists
   ansible.builtin.replace:
@@ -234,7 +260,6 @@
     backup: yes
   notify: Restart Tomcat
 # --- End: Valve replacement --
-
 # ------------------------------------------------------------------------------
 #
 # Task: Kill any process using port 8080 (if present)
