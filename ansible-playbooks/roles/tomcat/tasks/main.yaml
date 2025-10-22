@@ -201,7 +201,7 @@
 # --------------------------------------------------------------
 - name: Disable access restriction in manager context.xml
   ansible.builtin.replace:
-    path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/manager/META-INF/context.xml"
+    path: "{{ tomcat_install_dir }}/webapps/manager/META-INF/context.xml"
     regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
     replace: '<!-- \1 -->'
 
@@ -211,7 +211,7 @@
 # --------------------------------------------------------------
 - name: Disable access restriction in host-manager context.xml
   ansible.builtin.replace:
-    path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/host-manager/META-INF/context.xml"
+    path: "{{ tomcat_install_dir }}/webapps/host-manager/META-INF/context.xml"
     regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
     replace: '<!-- \1 -->'
 
