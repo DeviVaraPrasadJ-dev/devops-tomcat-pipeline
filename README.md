@@ -159,6 +159,7 @@ On the target EC2:
 <role rolename="admin-gui"/>
 <user username="{{ tomcat_manager_user }}" password="{{ tomcat_manager_password }}" roles="manager-gui,admin-gui"/>
 </tomcat-users>
+```
 Valve replacement regex (DOTALL-safe) used in Ansible replace:
 regexp: '(?s)(<Valve\s+className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?allow=")[^"]*(".*?/>)'
 replace: '\1.*\2'
