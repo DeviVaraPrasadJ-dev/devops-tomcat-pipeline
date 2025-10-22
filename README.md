@@ -171,7 +171,7 @@ cd terraform-infra
 terraform init
 terraform apply -auto-approve -var 'key_name=Jenkins-singapore'
 
-###After apply
+### After apply
 export EC2_IP=$(terraform output -raw public_ip)
 
 cd ../ansible-playbooks
@@ -181,7 +181,7 @@ ansible-playbook -i inventory.ini deploy-tomcat.yaml \
   --extra-vars "war_source_path=/path/to/javaapp-tomcat/target/artisantek-app.war war_dest_path=/opt/apache-tomcat-9.0.110/webapps/artisantek-app.war" \
   --ssh-extra-args='-o StrictHostKeyChecking=no'
 
-##10) Verification & common checks
+## 10) Verification & common checks
 
 Check Tomcat process & port:
 sudo ss -tulpn | grep 8080
@@ -204,7 +204,7 @@ Check tomcat-users.xml:
 
 sudo cat /opt/apache-tomcat-9.0.110/conf/tomcat-users.xml
 
-11) Troubleshooting: common errors & fixes
+## 11) Troubleshooting: common errors & fixes
 
 A) "Could not find or access '/path/*.war'" in Ansible copy
 
@@ -264,7 +264,7 @@ Keep - name: at consistent indentation.
 
 Quote regex strings and escape dots (\.).
 
-##12) Security & production recommendations
+## 12) Security & production recommendations
 
 Do not leave Manager/Host Manager open to the internet. allow=".*" is OK for short-lived CI VMs only.
 
@@ -276,13 +276,13 @@ Use a systemd unit for Tomcat in production instead of nohup.
 
 Configure log rotation and forward logs as needed.
 
-##13) Change log / notes
+## 13) Change log / notes
 
 Valve editing uses a DOTALL regex to support multi-line Valve elements.
 
 Ansible role uses backup: yes on replace tasks so original files can be inspected.
 
-##14) FAQ
+## 14) FAQ
 
 Q: Where is the WAR file taken from?
 A: From the Jenkins workspace: javaapp-tomcat/target/artisantek-app.war — path passed to Ansible via --extra-vars.
