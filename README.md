@@ -180,7 +180,7 @@ echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=/path/to/key.pe
 ansible-playbook -i inventory.ini deploy-tomcat.yaml \
   --extra-vars "war_source_path=/path/to/javaapp-tomcat/target/artisantek-app.war war_dest_path=/opt/apache-tomcat-9.0.110/webapps/artisantek-app.war" \
   --ssh-extra-args='-o StrictHostKeyChecking=no'
-10) Verification & common checks
+##10) Verification & common checks
 
 Check Tomcat process & port:
 sudo ss -tulpn | grep 8080
@@ -207,13 +207,13 @@ sudo cat /opt/apache-tomcat-9.0.110/conf/tomcat-users.xml
 
 A) "Could not find or access '/path/*.war'" in Ansible copy
 
-Cause: war_source_path wrong or wildcard used; copy does not expand controller-side wildcards.
+- Cause: war_source_path wrong or wildcard used; copy does not expand controller-side wildcards.
 
 Fix: Use absolute path or change role to use with_fileglob.
 
 B) Permission denied on /opt/apache-tomcat...
 
-Cause: directory owned by tomcat:tomcat.
+- Cause: directory owned by tomcat:tomcat.
 
 Fix: use sudo for inspection or ensure Ansible tasks run with become.
 
@@ -221,25 +221,25 @@ C) 403 Access Denied on /manager/html
 
 Causes:
 
-RemoteAddrValve restricts to localhost.
+- RemoteAddrValve restricts to localhost.
 
-Missing manager-gui role in tomcat-users.xml.
+- Missing manager-gui role in tomcat-users.xml.
 
 Fix:
 
-Update context.xml Valve via multiline-safe replace or comment it out.
+- Update context.xml Valve via multiline-safe replace or comment it out.
 
-Ensure tomcat-users.xml contains a user with manager-gui.
+- Ensure tomcat-users.xml contains a user with manager-gui.
 
 D) 404 Not Found on /manager/html
 
-Cause: Manager app missing or not deployed.
+- Cause: Manager app missing or not deployed.
 
-Fix:
+- Fix:
 
-Ensure /opt/apache-tomcat-<version>/webapps contains manager and host-manager.
+- Ensure /opt/apache-tomcat-<version>/webapps contains manager and host-manager.
 
-Remove creates: in unarchive or delete old dir before extracting.
+- Remove creates: in unarchive or delete old dir before extracting.
 
 Inspect catalina.out.
 
@@ -255,15 +255,15 @@ Add idempotent Ansible steps to stop any existing Tomcat before starting.
 
 F) YAML syntax error: "mapping values are not allowed"
 
-Cause: wrong indentation or unescaped : in comments/strings.
+- Cause: wrong indentation or unescaped : in comments/strings.
 
-Fix:
+- Fix:
 
 Keep - name: at consistent indentation.
 
 Quote regex strings and escape dots (\.).
 
-12) Security & production recommendations
+##12) Security & production recommendations
 
 Do not leave Manager/Host Manager open to the internet. allow=".*" is OK for short-lived CI VMs only.
 
@@ -275,13 +275,13 @@ Use a systemd unit for Tomcat in production instead of nohup.
 
 Configure log rotation and forward logs as needed.
 
-13) Change log / notes
+##13) Change log / notes
 
 Valve editing uses a DOTALL regex to support multi-line Valve elements.
 
 Ansible role uses backup: yes on replace tasks so original files can be inspected.
 
-14) FAQ
+##14) FAQ
 
 Q: Where is the WAR file taken from?
 A: From the Jenkins workspace: javaapp-tomcat/target/artisantek-app.war — path passed to Ansible via --extra-vars.
