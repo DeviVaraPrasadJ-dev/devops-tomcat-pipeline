@@ -193,28 +193,27 @@
 
 # ------------------------------------------------------------------------------
 #
-# Task: Ensure RemoteAddrValve allows all IPs in Manager and Host Manager
-#
-# Explanation:
-# - "blockinfile:" -> module for inserting (and managing) a contiguous block of text
-#    inside a target file using markers. Safer than replacing entire files.
-# - "path: '{{ item }}'" -> target file (we loop with with_items below).
-# - "marker: '<!-- {mark} ANSIBLE MANAGED BLOCK -->'" -> the marker used to identify
-#    the inserted block so future runs can update/remove it safely.
-# - "block: |" -> the exact XML fragment to add; in this case we allow access from any IP.
-# - This prevents manager being blocked by RemoteAddrValve when accessed remotely.
-# - "notify: Restart Tomcat" -> restarts Tomcat when the file is modified so the change takes effect.
+# --------------------------------------------------------------
+# This task uses the `replace` module to disable access restriction
+# in Tomcat's manager application by commenting out the <Valve> line.
+# The regular expression captures the entire <Valve ... /> element,
+# and then wraps it in an HTML comment so Tomcat ignores it.
+# --------------------------------------------------------------
 - name: Disable access restriction in manager context.xml
-   replace:
-   path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version}}/webapps/manager/META-INF/context.xml"
-   regexp: '(<Valve className="org.apache.catalina.valves.RemoteAddrValve".*?/>)'
-   replace: '<!-- \1 -->'
+  ansible.builtin.replace:
+    path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/manager/META-INF/context.xml"
+    regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
+    replace: '<!-- \1 -->'
 
+# --------------------------------------------------------------
+# Similarly, disable access restriction in host-manager context.xml
+# by commenting out the same <Valve> line in the host-manager context.
+# --------------------------------------------------------------
 - name: Disable access restriction in host-manager context.xml
-   replace:
-   path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/host-manager/META-INF/context.xml"
-   regexp: '(<Valve className="org.apache.catalina.valves.RemoteAddrValve".*?/>)'
-   replace: '<!-- \1 -->'
+  ansible.builtin.replace:
+    path: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}/webapps/host-manager/META-INF/context.xml"
+    regexp: '(<Valve className="org\.apache\.catalina\.valves\.RemoteAddrValve".*?/>)'
+    replace: '<!-- \1 -->'
 
 # ------------------------------------------------------------------------------
 #
